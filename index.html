@@ -21,6 +21,8 @@
         <p v-if="offline">¡Estás sin conexión!</p>
     </div>
 
+    <button id="installBtn" style="display: none;">Instalar PWA</button>
+
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
 
     <script>
@@ -62,6 +64,33 @@
                     });
             });
         }
+
+        let deferredPrompt;
+
+        window.addEventListener('beforeinstallprompt', (e) => {
+            // Evitar que el mini-infobar aparezca en la parte inferior de la pantalla
+            e.preventDefault();
+            // Guardar el evento para que se pueda mostrar más tarde
+            deferredPrompt = e;
+            // Mostrar el botón de instalación
+            document.getElementById('installBtn').style.display = 'block';
+        });
+
+        document.getElementById('installBtn').addEventListener('click', () => {
+            // Ocultar el botón de instalación
+            document.getElementById('installBtn').style.display = 'none';
+            // Mostrar el cuadro de diálogo de instalación
+            deferredPrompt.prompt();
+            // Esperar a que el usuario responda
+            deferredPrompt.userChoice.then((choiceResult) => {
+                if (choiceResult.outcome === 'accepted') {
+                    console.log('El usuario aceptó la instalación de la PWA');
+                } else {
+                    console.log('El usuario rechazó la instalación de la PWA');
+                }
+                deferredPrompt = null;
+            });
+        });
     </script>
 </body>
 </html>
