@@ -17,14 +17,12 @@
     <link rel="stylesheet" href="/styles.css"> 
 </head>
 <body>
-    <div id="app">
-        <h1>{{ titulo }}</h1>
-        <p>Contador: {{ contador }}</p>
-        <button @click="incrementar">Incrementar</button>
-        <p v-if="offline">¡Estás sin conexión!</p>
+    <div id="app" class="container p-4">
+        <h1 class="title">{{ titulo }}</h1>
+        <p class="subtitle">Contador: {{ contador }}</p>
+        <button @click="incrementar" class="button is-primary">Incrementar</button>
+        <p v-if="offline" class="notification is-warning">¡Estás sin conexión!</p>
     </div>
-
-    <button id="installBtn" style="display: none;">Instalar PWA</button>
 
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
 
@@ -49,51 +47,16 @@
                     titulo,
                     contador,
                     incrementar,
-                    offline
                 }
             }
         }).mount('#app')
 
-        // 3. Registrar el Service Worker
+        // Registrar el Service Worker
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
-                // Es importante usar la URL raíz /service-worker.js para que el scope sea el proyecto completo
                 navigator.serviceWorker.register('/service-worker.js')
-                    .then(registration => {
-                        console.log('Service Worker registrado con éxito:', registration.scope);
-                    })
-                    .catch(error => {
-                        console.log('Fallo el registro de Service Worker:', error);
-                    });
             });
         }
-
-        let deferredPrompt;
-
-        window.addEventListener('beforeinstallprompt', (e) => {
-            // Evitar que el mini-infobar aparezca en la parte inferior de la pantalla
-            e.preventDefault();
-            // Guardar el evento para que se pueda mostrar más tarde
-            deferredPrompt = e;
-            // Mostrar el botón de instalación
-            document.getElementById('installBtn').style.display = 'block';
-        });
-
-        document.getElementById('installBtn').addEventListener('click', () => {
-            // Ocultar el botón de instalación
-            document.getElementById('installBtn').style.display = 'none';
-            // Mostrar el cuadro de diálogo de instalación
-            deferredPrompt.prompt();
-            // Esperar a que el usuario responda
-            deferredPrompt.userChoice.then((choiceResult) => {
-                if (choiceResult.outcome === 'accepted') {
-                    console.log('El usuario aceptó la instalación de la PWA');
-                } else {
-                    console.log('El usuario rechazó la instalación de la PWA');
-                }
-                deferredPrompt = null;
-            });
-        });
     </script>
 </body>
 </html>

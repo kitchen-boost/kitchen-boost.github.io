@@ -1,13 +1,13 @@
 const CACHE_NAME = 'vue-cdn-pwa-cache-v1';
 
 // Lista de archivos esenciales que deben ser cacheados
-// ¡Asegúrate de incluir todos los archivos importantes, incluida la URL del CDN de Vue!
 const urlsToCache = [
-    '/', // La raíz de la app (GitHub Pages usa esto para index.html)
+    '/',
     '/index.html',
     '/styles.css',
     '/manifest.json',
-    'https://unpkg.com/vue@3/dist/vue.global.js', // URL exacta del CDN de Vue
+    'https://unpkg.com/vue@3/dist/vue.global.js', // Versión de desarrollo
+    // 'https://unpkg.com/vue@3/dist/vue.global.prod.js', // Versión de producción
     'https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css'
     // Incluye también tus imágenes y otros activos...
     // '/images/icon-192x192.png',
