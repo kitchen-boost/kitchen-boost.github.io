@@ -7,7 +7,8 @@ const urlsToCache = [
     '/index.html',
     '/styles.css',
     '/manifest.json',
-    'https://unpkg.com/vue@3/dist/vue.global.js' // URL exacta del CDN de Vue
+    'https://unpkg.com/vue@3/dist/vue.global.js', // URL exacta del CDN de Vue
+    'https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css'
     // Incluye también tus imágenes y otros activos...
     // '/images/icon-192x192.png',
     // '/images/icon-512x512.png'
