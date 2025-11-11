@@ -3,60 +3,434 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mi PWA Vue CDN</title>
-    
+    <title>Mi PWA Vue CDN — con Router</title>
+
     <link rel="manifest" href="/manifest.json">
-    
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black">
     <meta name="apple-mobile-web-app-title" content="Mi Vue PWA">
-    
-    <!-- Agregar Bulma CSS -->
+
+    <!-- Bulma CSS (se mantiene) -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css">
-    
-    <link rel="stylesheet" href="/styles.css"> 
+    <!-- Font Awesome: iconos representativos (CDN) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
-    <div id="app" class="container p-4">
-        <h1 class="title">{{ titulo }}</h1>
-        <p class="subtitle">Contador: {{ contador }}</p>
-        <button @click="incrementar" class="button is-primary">Incrementar</button>
-        <p v-if="offline" class="notification is-warning">¡Estás sin conexión!</p>
+    <div id="app">
+        <nav class="navbar is-primary" role="navigation" aria-label="main navigation">
+            <div class="navbar-brand">
+                <a class="navbar-item" href="#" @click.prevent>
+                    <span class="icon" aria-hidden="true"><i class="fa-solid fa-utensils"></i></span>
+                    <strong style="margin-left:8px">Kitchen Boost</strong>
+                </a>
+
+                <!-- burger usa store.mobileMenu -->
+                <a role="button"
+                   class="navbar-burger"
+                   :class="{ 'is-active': store.mobileMenu }"
+                   @click="store.mobileMenu = !store.mobileMenu"
+                   aria-label="menu"
+                   aria-expanded="false">
+                    <span aria-hidden="true"></span>
+                    <span aria-hidden="true"></span>
+                    <span aria-hidden="true"></span>
+                </a>
+            </div>
+
+            <!-- navbar-menu también atado al store -->
+            <div class="navbar-menu" :class="{ 'is-active': store.mobileMenu }">
+                <div class="navbar-start">
+                    <router-link class="navbar-item" to="/" @click.native="store.mobileMenu = false">
+                        <span class="icon"><i class="fa-solid fa-house"></i></span>
+                        <span style="margin-left:8px">Inicio</span>
+                    </router-link>
+                    <router-link class="navbar-item" to="/almacenes" @click.native="store.mobileMenu = false">
+                        <span class="icon"><i class="fa-solid fa-warehouse"></i></span>
+                        <span style="margin-left:8px">Almacenes</span>
+                    </router-link>
+                    <router-link class="navbar-item" to="/productos" @click.native="store.mobileMenu = false">
+                        <span class="icon"><i class="fa-solid fa-box-open"></i></span>
+                        <span style="margin-left:8px">Productos</span>
+                    </router-link>
+                    <router-link class="navbar-item" to="/ventas" @click.native="store.mobileMenu = false">
+                        <span class="icon"><i class="fa-solid fa-receipt"></i></span>
+                        <span style="margin-left:8px">Ventas</span>
+                    </router-link>
+                </div>
+            </div>
+        </nav>
+
+        <section class="section">
+            <div class="container">
+                <router-view />
+            </div>
+        </section>
     </div>
 
+    <!-- Vue + Vue Router (CDN) -->
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://unpkg.com/vue-router@4/dist/vue-router.global.js"></script>
 
     <script>
-        const { createApp, ref } = Vue
-        
-        createApp({
+    (function () {
+        const { createApp, ref, reactive, provide, computed } = Vue;
+        const { createRouter, createWebHashHistory } = VueRouter;
+
+        // Simple global "store" para compartir datos entre rutas
+        const store = reactive({
+            offline: !navigator.onLine,
+            mobileMenu: false,
+            // ejemplo de datos compartidos: recetas/productos/almacenes
+            almacenes: [
+                { id: 1, nombre: 'Principal', ubicacion: 'Centro' }
+            ],
+            productos: [
+                { id: 1, nombre: 'Tomate', tipo: 'basico', almacenId: 1, almacen: 'Principal', unidad: 'Kilogramos', stock: 50, precio: 0, ingredientes: [] }
+            ],
+            ventas: []
+        });
+
+        // Home (counter + estado offline)
+        const Home = {
+            name: 'HomeView',
+            template: `
+                <div>
+                    <h1 class="title">Inicio</h1>
+                    <p class="subtitle">Contador simple y estado offline</p>
+
+                    <div class="box">
+                        <p class="has-text-weight-semibold">Contador: {{ contador }}</p>
+                        <button class="button is-primary" @click="incrementar">Incrementar</button>
+                        <p v-if="store.offline" class="notification is-warning mt-3">¡Estás sin conexión!</p>
+                    </div>
+                </div>
+            `,
             setup() {
-                const titulo = ref('Mi Primera PWA con Vue y CDN')
-                const contador = ref(0)
-                const offline = ref(!navigator.onLine)
-                
-                const incrementar = () => {
-                    contador.value++
-                }
-                
-                // Escuchar cambios de conexión
-                window.addEventListener('online', () => offline.value = false)
-                window.addEventListener('offline', () => offline.value = true)
-
-                return {
-                    titulo,
-                    contador,
-                    incrementar,
-                }
+                const contador = ref(0);
+                const incrementar = () => contador.value++;
+                return { contador, incrementar, store };
             }
-        }).mount('#app')
+        };
 
-        // Registrar el Service Worker
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/service-worker.js')
-            });
-        }
+        // Almacenes view
+        const Almacenes = {
+            name: 'AlmacenesView',
+            template: `
+                <div>
+                    <h1 class="title">Almacenes</h1>
+                    <p class="subtitle">Gestiona tus almacenes</p>
+
+                    <div class="box">
+                        <div class="table-container">
+                            <table class="table is-fullwidth is-striped is-hoverable">
+                                <thead>
+                                    <tr><th>Nombre</th><th>Ubicación</th></tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="a in store.almacenes" :key="a.id">
+                                        <td><strong>{{ a.nombre }}</strong></td>
+                                        <td>{{ a.ubicacion }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            `,
+            setup() { return { store }; }
+        };
+
+        // Productos view (modificado: modal separada para formulario)
+        const Productos = {
+            name: 'ProductosView',
+            template: `
+                <div>
+                    <h1 class="title">Productos</h1>
+                    <p class="subtitle">Listado de productos — crear / eliminar</p>
+
+                    <div class="mb-4">
+                        <button class="button is-primary" @click="openModal">
+                            <span class="icon"><i class="fa-solid fa-plus"></i></span>
+                            <span>Nuevo producto</span>
+                        </button>
+                    </div>
+
+                    <!-- Modal para agregar producto -->
+                    <div class="modal" :class="{ 'is-active': showModal }">
+                        <div class="modal-background" @click="closeModal"></div>
+                        <div class="modal-card">
+                            <header class="modal-card-head">
+                                <p class="modal-card-title">
+                                    <span class="icon"><i class="fa-solid fa-plus"></i></span>
+                                    <span>Agregar nuevo producto</span>
+                                </p>
+                                <button class="delete" @click="closeModal"></button>
+                            </header>
+                            <section class="modal-card-body">
+                                <form @submit.prevent="addProduct">
+                                    <div class="field">
+                                        <label class="label">Nombre</label>
+                                        <div class="control">
+                                            <input class="input" v-model="newProduct.nombre" placeholder="Ej. Tomate" required>
+                                        </div>
+                                    </div>
+
+                                    <div class="columns is-mobile">
+                                        <div class="column is-6">
+                                            <div class="field">
+                                                <label class="label">Tipo</label>
+                                                <div class="control">
+                                                    <div class="select is-fullwidth">
+                                                        <select v-model="newProduct.tipo">
+                                                            <option value="basico">Básico</option>
+                                                            <option value="compuesto">Compuesto</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div class="column is-6">
+                                            <div class="field">
+                                                <label class="label">Almacén</label>
+                                                <div class="control">
+                                                    <div class="select is-fullwidth">
+                                                        <select v-model.number="newProduct.almacenId" required>
+                                                            <option v-for="a in store.almacenes" :key="a.id" :value="a.id">{{ a.nombre }}</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="columns is-mobile">
+                                        <div class="column is-6">
+                                            <div class="field">
+                                                <label class="label">Unidad</label>
+                                                <div class="control">
+                                                    <div class="select is-fullwidth">
+                                                        <select v-model="newProduct.unidad" required>
+                                                            <option value="Unidad">Unidad</option>
+                                                            <option value="Gramos">Gramos</option>
+                                                            <option value="Kilogramos">Kilogramos</option>
+                                                            <option value="Litros">Litros</option>
+                                                            <option value="Mililitros">Mililitros</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div class="column is-6">
+                                            <div class="field">
+                                                <label class="label">Stock</label>
+                                                <div class="control">
+                                                    <input type="number" class="input" v-model.number="newProduct.stock" min="0" required>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="field">
+                                        <label class="label">Precio</label>
+                                        <div class="control">
+                                            <input type="number" class="input" v-model.number="newProduct.precio" step="0.01" min="0">
+                                        </div>
+                                    </div>
+
+                                    <div class="field is-grouped">
+                                        <div class="control">
+                                            <button type="submit" class="button is-primary">
+                                                <span class="icon"><i class="fa-solid fa-check"></i></span>
+                                                <span>Guardar</span>
+                                            </button>
+                                        </div>
+                                        <div class="control">
+                                            <button type="button" @click="closeModal" class="button is-light">Cancelar</button>
+                                        </div>
+                                    </div>
+                                </form>
+                            </section>
+                        </div>
+                    </div>
+
+                    <!-- Tabla de productos -->
+                    <div class="box">
+                        <div class="table-container">
+                            <table class="table is-fullwidth is-striped">
+                                <thead>
+                                    <tr>
+                                        <th>Nombre</th>
+                                        <th>Tipo</th>
+                                        <th>Almacén</th>
+                                        <th>Unidad</th>
+                                        <th>Stock</th>
+                                        <th>Precio</th>
+                                        <th style="width:120px">Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="p in store.productos" :key="p.id">
+                                        <td>{{ p.nombre }}</td>
+                                        <td>
+                                            <span class="tag" :class="p.tipo === 'basico' ? 'is-info' : 'is-warning'">
+                                                {{ p.tipo }}
+                                            </span>
+                                        </td>
+                                        <td>{{ p.almacen || (getAlmacenName(p.almacenId) || '-') }}</td>
+                                        <td>{{ p.unidad || 'Unidad' }}</td>
+                                        <td>
+                                            <span class="tag" :class="p.stock > 20 ? 'is-success' : p.stock > 0 ? 'is-warning' : 'is-danger'">
+                                                {{ p.stock }}
+                                            </span>
+                                        </td>
+                                        <td>\${{ p.precio.toFixed(2) }}</td>
+                                        <td>
+                                            <button class="button is-small is-danger is-outlined" @click="deleteProduct(p.id)">
+                                                <span class="icon"><i class="fa-solid fa-trash"></i></span>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            `,
+            setup() {
+                const showModal = ref(false);
+                
+                // Template vacío para reiniciar el formulario
+                const getEmptyProduct = () => ({
+                    nombre: '',
+                    tipo: 'basico',
+                    almacenId: (store.almacenes[0] && store.almacenes[0].id) || null,
+                    almacen: '',
+                    unidad: 'Unidad',
+                    stock: 0,
+                    precio: 0,
+                    ingredientes: []
+                });
+                
+                const newProduct = ref(getEmptyProduct());
+
+                const STORAGE_KEY = 'kb_productos';
+
+                const saveProductos = () => {
+                    try {
+                        localStorage.setItem(STORAGE_KEY, JSON.stringify(store.productos));
+                    } catch (e) { console.error('Error guardando productos:', e); }
+                };
+
+                // Abre la modal y reinicia el formulario
+                const openModal = () => {
+                    newProduct.value = getEmptyProduct();
+                    showModal.value = true;
+                };
+
+                // Cierra la modal y vacía el formulario
+                const closeModal = () => {
+                    showModal.value = false;
+                    newProduct.value = getEmptyProduct();
+                };
+
+                // Añade un nuevo producto al store y persiste en localStorage
+                const addProduct = () => {
+                    if (!newProduct.value.nombre.trim()) {
+                        alert('Nombre requerido');
+                        return;
+                    }
+                    if (!newProduct.value.unidad) {
+                        alert('Seleccione la unidad de medida');
+                        return;
+                    }
+                    // calcular id único
+                    const nextId = store.productos.length ? Math.max(...store.productos.map(p => p.id)) + 1 : 1;
+                    const almacenObj = store.almacenes.find(a => a.id == newProduct.value.almacenId);
+                    const producto = {
+                        id: nextId,
+                        nombre: newProduct.value.nombre.trim(),
+                        tipo: newProduct.value.tipo,
+                        almacenId: newProduct.value.almacenId,
+                        almacen: almacenObj ? almacenObj.nombre : '',
+                        unidad: newProduct.value.unidad,
+                        precio: Number(newProduct.value.precio) || 0,
+                        stock: Number(newProduct.value.stock) || 0,
+                        ingredientes: newProduct.value.ingredientes || []
+                    };
+                    store.productos.push(producto);
+                    saveProductos();
+                    closeModal();
+                };
+
+                const deleteProduct = (id) => {
+                    if (!confirm('¿Eliminar producto?')) return;
+                    store.productos = store.productos.filter(p => p.id !== id);
+                    saveProductos();
+                };
+
+                const getAlmacenName = (id) => {
+                    const a = store.almacenes.find(x => x.id == id);
+                    return a ? a.nombre : '';
+                };
+
+                return { store, showModal, newProduct, openModal, closeModal, addProduct, deleteProduct, getAlmacenName };
+            }
+        };
+
+        // Ventas view
+        const Ventas = {
+            name: 'VentasView',
+            template: `
+                <div>
+                    <h1 class="title">Ventas</h1>
+                    <p class="subtitle">Historial de ventas</p>
+
+                    <div class="box" v-if="store.ventas.length">
+                        <ul>
+                            <li v-for="v in store.ventas" :key="v.id">
+                                <strong>{{ v.id }}</strong> — {{ v.total }} — {{ v.fecha }}
+                            </li>
+                        </ul>
+                    </div>
+                    <div class="notification is-info" v-else>No hay ventas registradas.</div>
+                </div>
+            `,
+            setup() { return { store }; }
+        };
+
+        // Rutas
+        const routes = [
+            { path: '/', component: Home },
+            { path: '/almacenes', component: Almacenes },
+            { path: '/productos', component: Productos },
+            { path: '/ventas', component: Ventas },
+            { path: '/:pathMatch(.*)*', redirect: '/' }
+        ];
+
+        const router = createRouter({
+            history: createWebHashHistory(),
+            routes
+        });
+
+        // cerrar menú móvil al navegar (mejora UX app-like)
+        router.afterEach(() => { store.mobileMenu = false; });
+
+        // Crear app raíz y proveer el store a componentes
+        const App = {
+            setup() {
+                provide('store', store);
+                // escuchar cambios de conexión y exponer en store
+                window.addEventListener('online', () => { store.offline = false; });
+                window.addEventListener('offline', () => { store.offline = true; });
+                return { store };
+            }
+        };
+
+        createApp(App).use(router).mount('#app');
+    })();
     </script>
 </body>
 </html>
