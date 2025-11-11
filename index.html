@@ -256,45 +256,104 @@
                         </div>
                     </div>
 
-                    <!-- Tabla de productos -->
-                    <div class="box">
-                        <div class="table-container">
-                            <table class="table is-fullwidth is-striped">
-                                <thead>
-                                    <tr>
-                                        <th>Nombre</th>
-                                        <th>Tipo</th>
-                                        <th>Almacén</th>
-                                        <th>Unidad</th>
-                                        <th>Stock</th>
-                                        <th>Precio</th>
-                                        <th style="width:120px">Acciones</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr v-for="p in store.productos" :key="p.id">
-                                        <td>{{ p.nombre }}</td>
-                                        <td>
-                                            <span class="tag" :class="p.tipo === 'basico' ? 'is-info' : 'is-warning'">
-                                                {{ p.tipo }}
-                                            </span>
-                                        </td>
-                                        <td>{{ p.almacen || (getAlmacenName(p.almacenId) || '-') }}</td>
-                                        <td>{{ p.unidad || 'Unidad' }}</td>
-                                        <td>
-                                            <span class="tag" :class="p.stock > 20 ? 'is-success' : p.stock > 0 ? 'is-warning' : 'is-danger'">
-                                                {{ p.stock }}
-                                            </span>
-                                        </td>
-                                        <td>\${{ p.precio.toFixed(2) }}</td>
-                                        <td>
-                                            <button class="button is-small is-danger is-outlined" @click="deleteProduct(p.id)">
-                                                <span class="icon"><i class="fa-solid fa-trash"></i></span>
-                                            </button>
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
+                    <!-- Vista de tarjetas en móviles (is-hidden-tablet) -->
+                    <div class="is-hidden-tablet">
+                        <div class="columns is-multiline is-mobile">
+                            <div class="column is-12" v-for="p in store.productos" :key="p.id">
+                                <div class="card">
+                                    <div class="card-content">
+                                        <div class="media">
+                                            <div class="media-content">
+                                                <p class="title is-5">{{ p.nombre }}</p>
+                                                <p class="subtitle is-6">{{ p.almacen }}</p>
+                                            </div>
+                                        </div>
+                                        <div class="content">
+                                            <div class="level is-mobile mb-2">
+                                                <div class="level-left">
+                                                    <div class="level-item">
+                                                        <div>
+                                                            <span class="tag is-light" :class="p.tipo === 'basico' ? 'is-info' : 'is-warning'">
+                                                                {{ p.tipo }}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div class="level-right">
+                                                    <div class="level-item">
+                                                        <strong class="has-text-success">\${{ p.precio.toFixed(2) }}</strong>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="level is-mobile mb-2">
+                                                <div class="level-left">
+                                                    <div class="level-item">
+                                                        <small class="has-text-grey">{{ p.unidad }}</small>
+                                                    </div>
+                                                </div>
+                                                <div class="level-right">
+                                                    <div class="level-item">
+                                                        <span class="tag" :class="p.stock > 20 ? 'is-success' : p.stock > 0 ? 'is-warning' : 'is-danger'">
+                                                            Stock: {{ p.stock }}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <footer class="card-footer">
+                                        <a href="#" class="card-footer-item has-text-danger" @click.prevent="deleteProduct(p.id)">
+                                            <span class="icon"><i class="fa-solid fa-trash"></i></span>
+                                            <span>Eliminar</span>
+                                        </a>
+                                    </footer>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Vista de tabla en tablets y escritorio (is-hidden-mobile) -->
+                    <div class="is-hidden-mobile">
+                        <div class="box">
+                            <div class="table-container">
+                                <table class="table is-fullwidth is-striped">
+                                    <thead>
+                                        <tr>
+                                            <th>Nombre</th>
+                                            <th>Tipo</th>
+                                            <th>Almacén</th>
+                                            <th>Unidad</th>
+                                            <th>Stock</th>
+                                            <th>Precio</th>
+                                            <th style="width:120px">Acciones</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr v-for="p in store.productos" :key="p.id">
+                                            <td>{{ p.nombre }}</td>
+                                            <td>
+                                                <span class="tag" :class="p.tipo === 'basico' ? 'is-info' : 'is-warning'">
+                                                    {{ p.tipo }}
+                                                </span>
+                                            </td>
+                                            <td>{{ p.almacen || (getAlmacenName(p.almacenId) || '-') }}</td>
+                                            <td>{{ p.unidad || 'Unidad' }}</td>
+                                            <td>
+                                                <span class="tag" :class="p.stock > 20 ? 'is-success' : p.stock > 0 ? 'is-warning' : 'is-danger'">
+                                                    {{ p.stock }}
+                                                </span>
+                                            </td>
+                                            <td>\${{ p.precio.toFixed(2) }}</td>
+                                            <td>
+                                                <button class="button is-small is-danger is-outlined" @click="deleteProduct(p.id)">
+                                                    <span class="icon"><i class="fa-solid fa-trash"></i></span>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     </div>
                 </div>
