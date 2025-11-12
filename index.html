@@ -57,6 +57,12 @@
                         <span class="icon"><i class="fa-solid fa-receipt"></i></span>
                         <span style="margin-left:8px">Ventas</span>
                     </router-link>
+
+                    <!-- Nuevo: enlace a Recetas -->
+                    <router-link class="navbar-item" to="/recetas" @click.native="store.mobileMenu = false">
+                        <span class="icon"><i class="fa-solid fa-bowl-food"></i></span>
+                        <span style="margin-left:8px">Recetas</span>
+                    </router-link>
                 </div>
             </div>
         </nav>
@@ -74,13 +80,15 @@
 
     <script>
     (function () {
-        const { createApp, ref, reactive, provide, computed } = Vue;
+        const { createApp, ref, reactive, provide, computed, watch } = Vue;
         const { createRouter, createWebHashHistory } = VueRouter;
 
         // Simple global "store" para compartir datos entre rutas
         const store = reactive({
             offline: !navigator.onLine,
             mobileMenu: false,
+            // id de receta que se debe abrir desde otra vista (p.ej. Products)
+            openRecipeId: null,
             // ejemplo de datos compartidos: recetas/productos/almacenes
             almacenes: [
                 { id: 1, nombre: 'Principal', ubicacion: 'Centro' }
@@ -88,8 +96,63 @@
             productos: [
                 { id: 1, nombre: 'Tomate', tipo: 'basico', almacenId: 1, almacen: 'Principal', unidad: 'Kilogramos', stock: 50, precio: 0, ingredientes: [] }
             ],
-            ventas: []
+            ventas: [],
+            // nuevo: recetas (se almacenan también, y al crear una receta se puede crear un producto compuesto)
+            recetas: []
         });
+
+        // Claves de localStorage y helpers globales para persistencia / sincronización
+        const PRODUCTOS_KEY = 'kb_productos';
+        const RECETAS_KEY = 'kb_recetas';
+
+        const saveProductosToStorage = () => {
+            try { localStorage.setItem(PRODUCTOS_KEY, JSON.stringify(store.productos)); } catch (e) { console.error('saveProductosToStorage', e); }
+        };
+        const saveRecetasToStorage = () => {
+            try { localStorage.setItem(RECETAS_KEY, JSON.stringify(store.recetas)); } catch (e) { console.error('saveRecetasToStorage', e); }
+        };
+
+        // Cargar desde storage al iniciar (si existe)
+        try {
+            const rawP = localStorage.getItem(PRODUCTOS_KEY);
+            if (rawP) {
+                const parsedP = JSON.parse(rawP);
+                if (Array.isArray(parsedP)) store.productos = parsedP;
+            }
+            const rawR = localStorage.getItem(RECETAS_KEY);
+            if (rawR) {
+                const parsedR = JSON.parse(rawR);
+                if (Array.isArray(parsedR)) store.recetas = parsedR;
+            }
+        } catch (e) { /* ignore */ }
+
+        // Recalcula precios de recetas y productos compuestos en base a precios actuales de ingredientes
+        const updateCompoundProductPrices = () => {
+            store.recetas.forEach(receta => {
+                let total = 0;
+                receta.ingredientes.forEach(ing => {
+                    const prod = store.productos.find(p => p.id === ing.productoId);
+                    if (prod) total += Number(prod.precio || 0) * Number(ing.cantidad || 0);
+                });
+                // sumar gastos si existen
+                if (Array.isArray(receta.gastos)) {
+                    receta.gastos.forEach(g => { total += Number(g.costo || 0); });
+                }
+                receta.precio = Number(total) || 0;
+
+                const prodIdx = store.productos.findIndex(p => p.nombre === receta.nombre && p.tipo === 'compuesto');
+                if (prodIdx !== -1) {
+                    store.productos[prodIdx].precio = receta.precio;
+                }
+            });
+            saveRecetasToStorage();
+            saveProductosToStorage();
+        };
+
+        // Vigilar cambios en los precios de los productos básicos y recalcular recetas
+        watch(() => store.productos.map(p => Number(p.precio || 0)), (/* newVal, oldVal */) => {
+            updateCompoundProductPrices();
+        }, { deep: false });
 
         // Home (counter + estado offline)
         const Home = {
@@ -156,14 +219,14 @@
                         </button>
                     </div>
 
-                    <!-- Modal para agregar producto -->
+                    <!-- Modal para agregar/editar producto -->
                     <div class="modal" :class="{ 'is-active': showModal }">
                         <div class="modal-background" @click="closeModal"></div>
                         <div class="modal-card">
                             <header class="modal-card-head">
                                 <p class="modal-card-title">
                                     <span class="icon"><i class="fa-solid fa-plus"></i></span>
-                                    <span>Agregar nuevo producto</span>
+                                    <span>{{ editingId ? 'Editar producto' : 'Agregar nuevo producto' }}</span>
                                 </p>
                                 <button class="delete" @click="closeModal"></button>
                             </header>
@@ -244,7 +307,7 @@
                                         <div class="control">
                                             <button type="submit" class="button is-primary">
                                                 <span class="icon"><i class="fa-solid fa-check"></i></span>
-                                                <span>Guardar</span>
+                                                <span>{{ editingId ? 'Actualizar' : 'Guardar' }}</span>
                                             </button>
                                         </div>
                                         <div class="control">
@@ -264,9 +327,12 @@
                                     <div class="card-content">
                                         <div class="media">
                                             <div class="media-content">
-                                                <p class="title is-5">{{ p.nombre }}</p>
-                                                <p class="subtitle is-6">{{ p.almacen }}</p>
-                                            </div>
+                                                <p class="title is-5">
+                                                    {{ p.nombre }}
+                                                    <span v-if="p.tipo === 'compuesto'" class="tag is-info is-light" style="margin-left:8px">Receta</span>
+                                                </p>
+                                             <p class="subtitle is-6">{{ p.almacen }}</p>
+                                         </div>
                                         </div>
                                         <div class="content">
                                             <div class="level is-mobile mb-2">
@@ -303,6 +369,10 @@
                                         </div>
                                     </div>
                                     <footer class="card-footer">
+                                        <a v-if="p.tipo !== 'compuesto'" href="#" class="card-footer-item has-text-info" @click.prevent="editProduct(p.id)">
+                                            <span class="icon"><i class="fa-solid fa-pen"></i></span>
+                                            <span>Editar</span>
+                                        </a>
                                         <a href="#" class="card-footer-item has-text-danger" @click.prevent="deleteProduct(p.id)">
                                             <span class="icon"><i class="fa-solid fa-trash"></i></span>
                                             <span>Eliminar</span>
@@ -346,6 +416,9 @@
                                             </td>
                                             <td>\${{ p.precio.toFixed(2) }}</td>
                                             <td>
+                                                <button class="button is-small is-info is-outlined mr-2" @click="editProduct(p.id)">
+                                                    <span class="icon"><i class="fa-solid fa-pen"></i></span>
+                                                </button>
                                                 <button class="button is-small is-danger is-outlined" @click="deleteProduct(p.id)">
                                                     <span class="icon"><i class="fa-solid fa-trash"></i></span>
                                                 </button>
@@ -360,6 +433,7 @@
             `,
             setup() {
                 const showModal = ref(false);
+                const editingId = ref(null);
                 
                 // Template vacío para reiniciar el formulario
                 const getEmptyProduct = () => ({
@@ -385,6 +459,7 @@
 
                 // Abre la modal y reinicia el formulario
                 const openModal = () => {
+                    editingId.value = null;
                     newProduct.value = getEmptyProduct();
                     showModal.value = true;
                 };
@@ -392,10 +467,35 @@
                 // Cierra la modal y vacía el formulario
                 const closeModal = () => {
                     showModal.value = false;
+                    editingId.value = null;
                     newProduct.value = getEmptyProduct();
                 };
 
-                // Añade un nuevo producto al store y persiste en localStorage
+                // Abre modal para editar
+                const editProduct = (id) => {
+                    const producto = store.productos.find(p => p.id === id);
+                    if (!producto) return;
+
+                    // Si es un producto compuesto (generado por una receta),
+                    // abrimos el editor de receta en su lugar.
+                    if (producto.tipo === 'compuesto') {
+                        // buscar receta por nombre (coincidencia creada al guardar receta)
+                        const rec = store.recetas.find(r => r.nombre === producto.nombre);
+                        if (rec) {
+                            store.openRecipeId = rec.id;
+                            // navegar a la ruta de recetas (hash router)
+                            location.hash = '#/recetas';
+                            return;
+                        }
+                    }
+
+                    // comportamiento por defecto: editar como producto
+                    editingId.value = id;
+                    newProduct.value = { ...producto };
+                    showModal.value = true;
+                };
+
+                // Añade o actualiza un producto
                 const addProduct = () => {
                     if (!newProduct.value.nombre.trim()) {
                         alert('Nombre requerido');
@@ -405,21 +505,42 @@
                         alert('Seleccione la unidad de medida');
                         return;
                     }
-                    // calcular id único
-                    const nextId = store.productos.length ? Math.max(...store.productos.map(p => p.id)) + 1 : 1;
-                    const almacenObj = store.almacenes.find(a => a.id == newProduct.value.almacenId);
-                    const producto = {
-                        id: nextId,
-                        nombre: newProduct.value.nombre.trim(),
-                        tipo: newProduct.value.tipo,
-                        almacenId: newProduct.value.almacenId,
-                        almacen: almacenObj ? almacenObj.nombre : '',
-                        unidad: newProduct.value.unidad,
-                        precio: Number(newProduct.value.precio) || 0,
-                        stock: Number(newProduct.value.stock) || 0,
-                        ingredientes: newProduct.value.ingredientes || []
-                    };
-                    store.productos.push(producto);
+
+                    if (editingId.value) {
+                        // Actualizar producto existente
+                        const idx = store.productos.findIndex(p => p.id === editingId.value);
+                        if (idx !== -1) {
+                            const almacenObj = store.almacenes.find(a => a.id == newProduct.value.almacenId);
+                            store.productos[idx] = {
+                                ...store.productos[idx],
+                                nombre: newProduct.value.nombre.trim(),
+                                tipo: newProduct.value.tipo,
+                                almacenId: newProduct.value.almacenId,
+                                almacen: almacenObj ? almacenObj.nombre : '',
+                                unidad: newProduct.value.unidad,
+                                precio: Number(newProduct.value.precio) || 0,
+                                stock: Number(newProduct.value.stock) || 0
+                            };
+                            // Sincronizar precios de recetas si cambió el precio
+                            updateCompoundProductPrices();
+                         }
+                    } else {
+                        // Crear nuevo producto
+                        const nextId = store.productos.length ? Math.max(...store.productos.map(p => p.id)) + 1 : 1;
+                        const almacenObj = store.almacenes.find(a => a.id == newProduct.value.almacenId);
+                        const producto = {
+                            id: nextId,
+                            nombre: newProduct.value.nombre.trim(),
+                            tipo: newProduct.value.tipo,
+                            almacenId: newProduct.value.almacenId,
+                            almacen: almacenObj ? almacenObj.nombre : '',
+                            unidad: newProduct.value.unidad,
+                            precio: Number(newProduct.value.precio) || 0,
+                            stock: Number(newProduct.value.stock) || 0,
+                            ingredientes: newProduct.value.ingredientes || []
+                        };
+                        store.productos.push(producto);
+                    }
                     saveProductos();
                     closeModal();
                 };
@@ -430,12 +551,501 @@
                     saveProductos();
                 };
 
+                // Actualizar precios de productos compuestos cuando cambia un ingrediente
+                const updateCompoundProductPrices = () => {
+                    store.recetas.forEach(receta => {
+                        let totalPrecio = 0;
+                        receta.ingredientes.forEach(ing => {
+                            const prod = store.productos.find(p => p.id === ing.productoId);
+                            if (prod) {
+                                totalPrecio += prod.precio * ing.cantidad;
+                            }
+                        });
+                        
+                        // Actualizar receta
+                        receta.precio = totalPrecio;
+                        
+                        // Actualizar producto compuesto asociado
+                        const prodIdx = store.productos.findIndex(p => p.nombre === receta.nombre && p.tipo === 'compuesto');
+                        if (prodIdx !== -1) {
+                            store.productos[prodIdx].precio = totalPrecio;
+                        }
+                    });
+                    saveProductos();
+                    saveRecetasStorage();
+                };
+
                 const getAlmacenName = (id) => {
                     const a = store.almacenes.find(x => x.id == id);
                     return a ? a.nombre : '';
                 };
 
-                return { store, showModal, newProduct, openModal, closeModal, addProduct, deleteProduct, getAlmacenName };
+                return { store, showModal, editingId, newProduct, openModal, closeModal, editProduct, addProduct, deleteProduct, updateCompoundProductPrices, getAlmacenName };
+            }
+        };
+
+        // Nuevo: Recetas view
+        const Recetas = {
+            name: 'RecetasView',
+            template: `
+                <div>
+                    <h1 class="title">Recetas</h1>
+                    <p class="subtitle">Crear recetas que generen productos compuestos</p>
+
+                    <div class="mb-4">
+                        <button class="button is-primary" @click="openModal">
+                            <span class="icon"><i class="fa-solid fa-plus"></i></span>
+                            <span>Nueva receta</span>
+                        </button>
+                    </div>
+
+                    <!-- Modal receta -->
+                    <div class="modal" :class="{ 'is-active': showModal }">
+                        <div class="modal-background" @click="closeModal"></div>
+                        <div class="modal-card" style="width:900px; max-width:95%;">
+                            <header class="modal-card-head">
+                                <p class="modal-card-title">
+                                    <span class="icon"><i class="fa-solid fa-book-open"></i></span>
+                                    <span>{{ editingId ? 'Editar receta' : 'Crear receta' }}</span>
+                                </p>
+                                <button class="delete" @click="closeModal"></button>
+                            </header>
+                            <section class="modal-card-body">
+                                <form @submit.prevent="saveRecipe">
+                                    <div class="field">
+                                        <label class="label">Nombre de la receta / producto</label>
+                                        <div class="control">
+                                            <input class="input" v-model="recipe.nombre" placeholder="Ej. Salsa de Tomate" required>
+                                        </div>
+                                    </div>
+
+                                    <div class="columns">
+                                        <div class="column is-6">
+                                            <div class="field">
+                                                <label class="label">Almacén destino</label>
+                                                <div class="control">
+                                                    <div class="select is-fullwidth">
+                                                        <select v-model.number="recipe.almacenId" required>
+                                                            <option v-for="a in store.almacenes" :key="a.id" :value="a.id">{{ a.nombre }}</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="column is-6">
+                                            <div class="field">
+                                                <label class="label">Unidad de medida</label>
+                                                <div class="control">
+                                                    <div class="select is-fullwidth">
+                                                        <select v-model="recipe.unidad" required>
+                                                            <option>Unidad</option>
+                                                            <option>Gramos</option>
+                                                            <option>Kilogramos</option>
+                                                            <option>Litros</option>
+                                                            <option>Mililitros</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <h3 class="subtitle is-6">Ingredientes</h3>
+                                    <div v-for="(ing, idx) in recipe.ingredientes" :key="idx" class="box">
+                                        <div class="columns is-vcentered">
+                                            <div class="column is-5">
+                                                <div class="field">
+                                                    <label class="label is-small">Producto</label>
+                                                    <div class="control">
+                                                        <div class="select is-fullwidth">
+                                                            <select v-model.number="ing.productoId" required>
+                                                                <option :value="null">-- seleccionar --</option>
+                                                                <option v-for="p in store.productos" :key="p.id" :value="p.id">{{ p.nombre }} — {{ p.almacen }}</option>
+                                                            </select>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="column is-2">
+                                                <div class="field">
+                                                    <label class="label is-small">Cantidad</label>
+                                                    <div class="control">
+                                                        <input type="number" class="input" v-model.number="ing.cantidad" min="0.01" step="0.01" required>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="column is-3">
+                                                <div class="field">
+                                                    <label class="label is-small">Unidad de medida</label>
+                                                    <div class="control">
+                                                        <div class="select is-fullwidth">
+                                                            <select v-model="ing.unidad" required>
+                                                                <option value="">-- Seleccionar --</option>
+                                                                <option value="Unidad">Unidad</option>
+                                                                <option value="Gramos">Gramos</option>
+                                                                <option value="Kilogramos">Kilogramos</option>
+                                                                <option value="Litros">Litros</option>
+                                                                <option value="Mililitros">Mililitros</option>
+                                                            </select>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="column is-1">
+                                                <button class="button is-danger is-light" type="button" @click="removeIngredient(idx)">
+                                                    <span class="icon"><i class="fa-solid fa-trash"></i></span>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="field">
+                                        <button type="button" class="button is-link is-light" @click="addIngredient">
+                                            <span class="icon"><i class="fa-solid fa-plus"></i></span>
+                                            <span>Agregar ingrediente</span>
+                                        </button>
+                                    </div>
+
+                                    <hr>
+                                    <h3 class="subtitle is-6">Gastos Adicionales</h3>
+                                    <div v-for="(gasto, idx) in recipe.gastos" :key="idx" class="box">
+                                        <div class="columns is-vcentered">
+                                            <div class="column is-8">
+                                                <div class="field">
+                                                    <label class="label is-small">Concepto</label>
+                                                    <div class="control">
+                                                        <input class="input" v-model="gasto.concepto" placeholder="Ej. Mano de obra, Embalaje" required>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="column is-3">
+                                                <div class="field">
+                                                    <label class="label is-small">Costo</label>
+                                                    <div class="control">
+                                                        <input type="number" class="input" v-model.number="gasto.costo" min="0" step="0.01" required>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="column is-1">
+                                                <button class="button is-danger is-light" type="button" @click="removeGasto(idx)">
+                                                    <span class="icon"><i class="fa-solid fa-trash"></i></span>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="field">
+                                        <button type="button" class="button is-link is-light" @click="addGasto">
+                                            <span class="icon"><i class="fa-solid fa-plus"></i></span>
+                                            <span>Agregar gasto</span>
+                                        </button>
+                                    </div>
+
+                                    <hr>
+                                    <div class="box has-background-light">
+                                        <div class="level">
+                                            <div class="level-left">
+                                                <div class="level-item">
+                                                    <span><strong>Costo de ingredientes:</strong></span>
+                                                </div>
+                                            </div>
+                                            <div class="level-right">
+                                                <div class="level-item">
+                                                    <span class="has-text-info"><strong>\${{ costIngredientes.toFixed(2) }}</strong></span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="level">
+                                            <div class="level-left">
+                                                <div class="level-item">
+                                                    <span><strong>Gastos adicionales:</strong></span>
+                                                </div>
+                                            </div>
+                                            <div class="level-right">
+                                                <div class="level-item">
+                                                    <span class="has-text-warning"><strong>\${{ costGastos.toFixed(2) }}</strong></span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="level">
+                                            <div class="level-left">
+                                                <div class="level-item">
+                                                    <span><strong>Precio total (calculado):</strong></span>
+                                                </div>
+                                            </div>
+                                            <div class="level-right">
+                                                <div class="level-item">
+                                                    <span class="has-text-success"><strong>\${{ calculatedPrice.toFixed(2) }}</strong></span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="field is-grouped">
+                                        <div class="control">
+                                            <button type="submit" class="button is-primary">{{ editingId ? 'Actualizar receta' : 'Guardar receta y crear producto' }}</button>
+                                        </div>
+                                        <div class="control">
+                                            <button type="button" class="button is-light" @click="closeModal">Cancelar</button>
+                                        </div>
+                                    </div>
+                                </form>
+                            </section>
+                        </div>
+                    </div>
+
+                    <!-- Lista de recetas -->
+                    <div class="box" v-if="store.recetas.length">
+                        <div class="is-hidden-mobile">
+                            <table class="table is-fullwidth is-striped">
+                                <thead>
+                                    <tr><th>Nombre</th><th>Almacén</th><th>Ingredientes</th><th>Precio</th><th>Acciones</th></tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="r in store.recetas" :key="r.id">
+                                        <td>{{ r.nombre }}</td>
+                                        <td>{{ r.almacen }}</td>
+                                        <td>
+                                            <ul style="margin: 0; padding-left: 20px;">
+                                                <li v-for="ing in r.ingredientes" :key="ing.productoId">{{ ing.cantidad }} {{ ing.unidad }} — {{ ing.nombre }}</li>
+                                            </ul>
+                                        </td>
+                                        <td>\${{ r.precio.toFixed(2) }}</td>
+                                        <td>
+                                            <button class="button is-small is-info is-outlined mr-2" @click="editRecipe(r.id)">
+                                                <span class="icon"><i class="fa-solid fa-pen"></i></span>
+                                            </button>
+                                            <button class="button is-small is-danger is-outlined" @click="deleteRecipe(r.id)">
+                                                <span class="icon"><i class="fa-solid fa-trash"></i></span>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="is-hidden-tablet">
+                            <div class="columns is-multiline is-mobile">
+                                <div class="column is-12" v-for="r in store.recetas" :key="r.id">
+                                    <div class="card">
+                                        <div class="card-content">
+                                            <p class="title is-5">{{ r.nombre }}</p>
+                                            <p class="subtitle is-6">{{ r.almacen }}</p>
+                                            <div class="content">
+                                                <p><strong>Ingredientes:</strong></p>
+                                                <ul style="margin: 0; padding-left: 20px;">
+                                                    <li v-for="ing in r.ingredientes" :key="ing.productoId">{{ ing.cantidad }} {{ ing.unidad }} — {{ ing.nombre }}</li>
+                                                </ul>
+                                                <p class="mt-3"><strong>Precio: </strong>\${{ r.precio.toFixed(2) }}</p>
+                                            </div>
+                                        </div>
+                                        <footer class="card-footer">
+                                            <a href="#" class="card-footer-item has-text-info" @click.prevent="editRecipe(r.id)">
+                                                <span class="icon"><i class="fa-solid fa-pen"></i></span>
+                                                <span>Editar</span>
+                                            </a>
+                                            <a href="#" class="card-footer-item has-text-danger" @click.prevent="deleteRecipe(r.id)">
+                                                <span class="icon"><i class="fa-solid fa-trash"></i></span>
+                                                <span>Eliminar</span>
+                                            </a>
+                                        </footer>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div v-else class="notification is-info">No hay recetas creadas.</div>
+                </div>
+            `,
+            setup() {
+                const showModal = ref(false);
+                const editingId = ref(null);
+                const recipe = ref({
+                    nombre: '',
+                    almacenId: (store.almacenes[0] && store.almacenes[0].id) || null,
+                    unidad: 'Unidad',
+                    ingredientes: [],
+                    gastos: []
+                });
+
+                const RECETAS_KEY = 'kb_recetas';
+                const PRODUCTOS_KEY = 'kb_productos';
+
+                const getEmptyRecipe = () => ({
+                    nombre: '',
+                    almacenId: (store.almacenes[0] && store.almacenes[0].id) || null,
+                    unidad: 'Unidad',
+                    ingredientes: [],
+                    gastos: []
+                });
+
+                const openModal = () => {
+                    editingId.value = null;
+                    recipe.value = getEmptyRecipe();
+                    addIngredient();
+                    showModal.value = true;
+                };
+                const closeModal = () => { 
+                    showModal.value = false;
+                    editingId.value = null;
+                };
+
+                const editRecipe = (id) => {
+                    const rec = store.recetas.find(r => r.id === id);
+                    if (rec) {
+                        editingId.value = id;
+                        recipe.value = JSON.parse(JSON.stringify(rec));
+                        showModal.value = true;
+                    }
+                };
+
+                // Cuando otra vista solicita abrir el editor de receta
+                watch(() => store.openRecipeId, (val) => {
+                    if (val) {
+                        // abrir modal de receta para ese id y limpiar la bandera
+                        editRecipe(val);
+                        store.openRecipeId = null;
+                        location.hash = '#/recetas';
+                    }
+                });
+
+                const addIngredient = () => {
+                    recipe.value.ingredientes.push({ productoId: null, cantidad: 1, unidad: '' });
+                };
+                const removeIngredient = (i) => {
+                    recipe.value.ingredientes.splice(i, 1);
+                };
+
+                const addGasto = () => {
+                    recipe.value.gastos.push({ concepto: '', costo: 0 });
+                };
+                const removeGasto = (i) => {
+                    recipe.value.gastos.splice(i, 1);
+                };
+
+                // Costo de ingredientes
+                const costIngredientes = computed(() => {
+                    return recipe.value.ingredientes.reduce((sum, ing) => {
+                        const p = store.productos.find(x => x.id == ing.productoId);
+                        const precioUnit = p ? Number(p.precio) : 0;
+                        return sum + (precioUnit * Number(ing.cantidad || 0));
+                    }, 0);
+                });
+
+                // Costo de gastos adicionales
+                const costGastos = computed(() => {
+                    return recipe.value.gastos.reduce((sum, gasto) => {
+                        return sum + (Number(gasto.costo) || 0);
+                    }, 0);
+                });
+
+                // calcula precio sumando precio ingrediente * cantidad
+                const calculatedPrice = computed(() => {
+                    return costIngredientes.value + costGastos.value;
+                });
+
+                const saveProductos = () => {
+                    try { localStorage.setItem(PRODUCTOS_KEY, JSON.stringify(store.productos)); } catch(e){ console.error(e); }
+                };
+                const saveRecetasStorage = () => {
+                    try { localStorage.setItem(RECETAS_KEY, JSON.stringify(store.recetas)); } catch(e){ console.error(e); }
+                };
+
+                // crear o actualizar receta
+                const saveRecipe = () => {
+                    if (!recipe.value.nombre.trim()) { alert('Nombre de receta requerido'); return; }
+                    if (!recipe.value.ingredientes.length) { alert('Agregue al menos un ingrediente'); return; }
+                    // validar ingredientes seleccionados
+                    for (const ing of recipe.value.ingredientes) {
+                        if (!ing.productoId || !ing.cantidad || ing.cantidad <= 0 || !ing.unidad) {
+                            alert('Revise los ingredientes: producto, cantidad y unidad requeridos');
+                            return;
+                        }
+                    }
+
+                    const almacenObj = store.almacenes.find(a => a.id == recipe.value.almacenId);
+                    const ingredientesProcessados = recipe.value.ingredientes.map(ing => {
+                        const p = store.productos.find(x => x.id == ing.productoId);
+                        return { productoId: ing.productoId, nombre: p ? p.nombre : '', cantidad: Number(ing.cantidad), unidad: ing.unidad };
+                    });
+
+                    const gastosProcessados = recipe.value.gastos.map(g => ({
+                        concepto: g.concepto.trim(),
+                        costo: Number(g.costo) || 0
+                    }));
+
+                    if (editingId.value) {
+                        // Actualizar receta existente
+                        const idx = store.recetas.findIndex(r => r.id === editingId.value);
+                        if (idx !== -1) {
+                            store.recetas[idx] = {
+                                ...store.recetas[idx],
+                                nombre: recipe.value.nombre.trim(),
+                                almacenId: recipe.value.almacenId,
+                                almacen: almacenObj ? almacenObj.nombre : '',
+                                unidad: recipe.value.unidad,
+                                ingredientes: ingredientesProcessados,
+                                gastos: gastosProcessados,
+                                precio: Number(calculatedPrice.value) || 0
+                            };
+                            // Actualizar también el producto compuesto asociado
+                            const prodIdx = store.productos.findIndex(p => p.nombre === store.recetas[idx].nombre && p.tipo === 'compuesto');
+                            if (prodIdx !== -1) {
+                                store.productos[prodIdx].precio = Number(calculatedPrice.value) || 0;
+                                store.productos[prodIdx].ingredientes = ingredientesProcessados;
+                            }
+                        }
+                    } else {
+                        // Crear nueva receta
+                        const nextRecId = store.recetas.length ? Math.max(...store.recetas.map(r => r.id)) + 1 : 1;
+                        const recetaObj = {
+                            id: nextRecId,
+                            nombre: recipe.value.nombre.trim(),
+                            almacenId: recipe.value.almacenId,
+                            almacen: almacenObj ? almacenObj.nombre : '',
+                            unidad: recipe.value.unidad,
+                            ingredientes: ingredientesProcessados,
+                            gastos: gastosProcessados,
+                            precio: Number(calculatedPrice.value) || 0,
+                            fecha: new Date().toLocaleString()
+                        };
+
+                        // guardar receta
+                        store.recetas.push(recetaObj);
+
+                        // crear producto compuesto resultante de la receta
+                        const nextProdId = store.productos.length ? Math.max(...store.productos.map(p => p.id)) + 1 : 1;
+                        const productoCompuesto = {
+                            id: nextProdId,
+                            nombre: recetaObj.nombre,
+                            tipo: 'compuesto',
+                            almacenId: recetaObj.almacenId,
+                            almacen: recetaObj.almacen,
+                            unidad: recetaObj.unidad,
+                            stock: 0,
+                            precio: recetaObj.precio,
+                            ingredientes: recetaObj.ingredientes
+                        };
+                        store.productos.push(productoCompuesto);
+                    }
+
+                    saveRecetasStorage();
+                    saveProductos();
+                    closeModal();
+                };
+
+                const deleteRecipe = (id) => {
+                    if (!confirm('¿Eliminar receta? Esto no eliminará el producto generado.')) return;
+                    const receta = store.recetas.find(r => r.id === id);
+                    if (receta) {
+                        // También eliminar el producto compuesto asociado
+                        store.productos = store.productos.filter(p => !(p.nombre === receta.nombre && p.tipo === 'compuesto'));
+                    }
+                    store.recetas = store.recetas.filter(r => r.id !== id);
+                    saveRecetasStorage();
+                    saveProductos();
+                };
+
+                return { store, showModal, editingId, recipe, openModal, closeModal, editRecipe, addIngredient, removeIngredient, addGasto, removeGasto, costIngredientes, costGastos, calculatedPrice, saveRecipe, deleteRecipe, saveRecetasStorage };
             }
         };
 
@@ -466,6 +1076,8 @@
             { path: '/almacenes', component: Almacenes },
             { path: '/productos', component: Productos },
             { path: '/ventas', component: Ventas },
+            // nueva ruta recetas
+            { path: '/recetas', component: Recetas },
             { path: '/:pathMatch(.*)*', redirect: '/' }
         ];
 
